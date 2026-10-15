@@ -1,6 +1,13 @@
 // MMODD — client
 'use strict';
 (() => {
+// pas de zoom du navigateur : on impose la fenêtre d'affichage (même si la page est emballée par l'hébergeur)
+{
+  const VP = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+  let m = document.querySelector('meta[name=viewport]');
+  if (!m) { m = document.createElement('meta'); m.name = 'viewport'; (document.head || document.documentElement).appendChild(m); }
+  if (m.content !== VP) m.content = VP;
+}
 const $ = id => document.getElementById(id);
 const cv = $('game'), ctx = cv.getContext('2d');
 const TS = 16;
@@ -1444,6 +1451,18 @@ function resize() {
   S = Math.max(2, Math.round(Math.min(cv.width, cv.height) / (TS * 12)));
 }
 addEventListener('resize', resize); resize();
+// iPhone : après une rotation, la taille n'est juste qu'un peu plus tard
+addEventListener('orientationchange', () => { setTimeout(resize, 150); setTimeout(resize, 500); });
+if (window.visualViewport) visualViewport.addEventListener('resize', () => setTimeout(resize, 50));
+// empêcher le zoom du navigateur quand on tape vite (double appui) ou qu'on pince l'écran pendant le jeu
+{
+  let lastEnd = 0;
+  const free = t => t && t.closest && t.closest('input, textarea, select, .panel, #chatbox');
+  document.addEventListener('touchend', e => { const now = performance.now(); if (now - lastEnd < 400 && !free(e.target)) e.preventDefault(); lastEnd = now; }, { passive: false });
+  document.addEventListener('touchstart', e => { if (e.touches.length > 1 && !free(e.target)) e.preventDefault(); }, { passive: false });
+  for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
+  document.addEventListener('dblclick', e => { if (!free(e.target)) e.preventDefault(); }, { passive: false });
+}
 const scr = (x, y) => [Math.round((x * TS - camPx) * S), Math.round((y * TS - camPy) * S)];
 
 function drawMap() {
