@@ -1,0 +1,9 @@
+{
+  "name": "mmodd",
+  "version": "1.0.0",
+  "description": "MMO 2D pixel art jouable dans le navigateur (Node.js, aucune dépendance)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
