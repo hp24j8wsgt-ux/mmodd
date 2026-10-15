@@ -230,6 +230,9 @@
   .charrow .grow { flex: 1; min-width: 0; }
   .charrow b { color: var(--gold-hi); font-size: 15px; }
   #charBox { margin-bottom: 10px; }
+  .accbox { margin-top: 12px; padding: 8px; background: var(--well); border: 1px solid #2c2014; border-radius: 5px; display: grid; gap: 6px; }
+  .accrow { display: flex; gap: 6px; align-items: center; } .accrow code { flex: 1; font-size: 12px; color: var(--gold-hi); letter-spacing: .5px; word-break: break-all; }
+  #accIn { width: 100%; margin-bottom: 6px; }
   .note { font-size: 12px; color: var(--muted); line-height: 1.35; }
   .emotes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
   #dlgText { font-size: 13px; line-height: 1.4; white-space: pre-line; margin-bottom: 10px; }
@@ -436,6 +439,13 @@
       <button id="go">Entrer dans le royaume</button>
     </div>
     <div id="err"></div>
+    <div id="accBox" class="accbox" hidden>
+      <div class="note">Ton <b>code de compte</b> (garde-le dans tes notes) : il permet de retrouver tes personnages sur un autre téléphone, un autre navigateur ou après avoir vidé l'historique.</div>
+      <div class="accrow"><code id="accCode"></code><button class="btn alt small" id="accCopy">Copier</button></div>
+      <button class="btn alt small" id="accShow" style="width:100%">Retrouver mes personnages</button>
+      <div id="accRec" hidden><input id="accIn" maxlength="40" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters"><button class="btn small" id="accGo" style="width:100%">Utiliser ce code</button></div>
+      <div class="note" id="accMsg"></div>
+    </div>
     <div class="hint" id="saveHint">Ton personnage est sauvegardé sur le serveur avec ton pseudo.</div>
   </div>
 </div>

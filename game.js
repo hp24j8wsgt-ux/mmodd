@@ -3316,13 +3316,33 @@ function join(nameOverride, clsOverride) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'join', acc: ACC, ...wantJoin }));
 }
 // Compte de l'appareil : il regroupe tes personnages (5 au maximum)
-let ACC = store.get('ra_acc');
+var ACC = store.get('ra_acc');
 if (!ACC || ACC.length < 8) { ACC = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join(''); store.set('ra_acc', ACC); }
 let charsCache = [], charsMax = 5;
 function showNewChar(on) {
   $('newChar').hidden = !on; $('charBox').hidden = on || !charsCache.length;
   $('newCharHead').hidden = !charsCache.length;
   if (on) $('nameIn').value = '';
+}
+function bindAccBox() {
+  if (!$('accBox') || $('accBox')._b) return; $('accBox')._b = 1;
+  $('accCopy').onclick = async () => { try { await navigator.clipboard.writeText(fmtAcc(ACC)); $('accMsg').textContent = 'Code copié. Garde-le dans tes notes.'; } catch (e) { $('accMsg').textContent = 'Copie impossible : note le code à la main.'; } };
+  $('accShow').onclick = () => { $('accRec').hidden = !$('accRec').hidden; };
+  $('accGo').onclick = () => useAccCode($('accIn').value);
+}
+setTimeout(() => { try { bindAccBox(); renderAccBox(); } catch (e) { } }, 0);
+const fmtAcc = a => (a || '').match(/.{1,4}/g).join('-').toUpperCase();
+function renderAccBox() {
+  const el = $('accBox'); if (!el) return;
+  if (window.LocalServer) { el.hidden = true; return; }
+  el.hidden = false;
+  $('accCode').textContent = fmtAcc(ACC);
+}
+function useAccCode(raw) {
+  const c = String(raw || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+  if (c.length < 8 || c.length > 40) { $('accMsg').textContent = 'Code invalide : il fait 24 caractères (lettres et chiffres).'; return; }
+  ACC = c; store.set('ra_acc', ACC); $('accMsg').textContent = 'Code enregistré : recherche de tes personnages…'; $('accIn').value = '';
+  $('accRec').hidden = true; sendMsg({ t: 'chars', acc: ACC }); setTimeout(() => { $('accMsg').textContent = charsCache.length ? `${charsCache.length} personnage(s) retrouvé(s).` : 'Aucun personnage trouvé avec ce code.'; }, 900);
 }
 function renderChars(list, max) {
   charsCache = list || []; charsMax = max || 5;
@@ -3345,6 +3365,7 @@ function renderChars(list, max) {
     del.onclick = () => { if (del.dataset.sure) sendMsg({ t: 'delChar', acc: ACC, name: c.name }); else { del.dataset.sure = 1; del.textContent = 'Confirmer ?'; setTimeout(() => { delete del.dataset.sure; del.textContent = 'Supprimer'; }, 4000); } };
     row.append(play, del); box.appendChild(row);
   }
+  renderAccBox();
   $('newCharBtn').disabled = charsCache.length >= charsMax;
   $('newCharBtn').textContent = charsCache.length >= charsMax ? `Maximum atteint (${charsMax} personnages)` : 'Créer un nouveau personnage';
   showNewChar(!charsCache.length);
@@ -3809,7 +3830,8 @@ function renderSettings() {
   const opt = (id, on, label, note) => `<div class="row2"><div class="grow"><b>${label}</b><div class="note">${note}</div></div><button class="btn small${on ? '' : ' alt'}" id="${id}">${on ? 'Activé' : 'Désactivé'}</button></div>`;
   $('setBody').innerHTML = opt('stLow', fxLow, 'Mode économie', 'Moins de particules et pas d\'auras de prestige : plus fluide sur les vieux téléphones.') +
     opt('stDmg', showDmg, 'Chiffres de dégâts', 'Affiche les dégâts au-dessus des cibles.') +
-    opt('stSnd', !!(window.Snd && Snd.on), 'Sons', 'Effets sonores du jeu (touche M).');
+    opt('stSnd', !!(window.Snd && Snd.on), 'Sons', 'Effets sonores du jeu (touche M).') +
+    (window.LocalServer ? '' : `<div class="row2"><div class="grow"><b>Code de compte</b><div class="note">Pour retrouver tes personnages sur un autre appareil : <b style="color:var(--gold-hi)">${fmtAcc(ACC)}</b></div></div></div>`);
   $('stLow').onclick = () => { fxLow = !fxLow; try { localStorage.setItem('ra_fxlow', fxLow ? '1' : '0'); } catch (e) { } renderSettings(); };
   $('stDmg').onclick = () => { showDmg = !showDmg; try { localStorage.setItem('ra_dmgtxt', showDmg ? '1' : '0'); } catch (e) { } renderSettings(); };
   $('stSnd').onclick = () => { Snd.toggle(); updSnd(); renderSettings(); };

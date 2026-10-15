@@ -32,13 +32,14 @@ function storeSave(o) {
 // Si UPSTASH_REDIS_REST_URL et UPSTASH_REDIS_REST_TOKEN sont définis, les sauvegardes y sont aussi copiées.
 const CLOUD = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? { url: process.env.UPSTASH_REDIS_REST_URL.replace(/\/$/, ''), tok: process.env.UPSTASH_REDIS_REST_TOKEN } : null;
 const cloudDirty = new Map();
+let cloudReady = false; // on n'écrit dans le nuage qu'après l'avoir lu correctement
 async function cloudGet(key) {
   if (!CLOUD) return null;
-  try {
-    const r = await fetch(`${CLOUD.url}/get/ra_${key}`, { headers: { Authorization: 'Bearer ' + CLOUD.tok } });
-    const j = await r.json(); if (!j.result) return null;
-    return JSON.parse(zlib.gunzipSync(Buffer.from(j.result, 'base64')).toString('utf8'));
-  } catch (e) { console.error('nuage (lecture)', e.message); return null; }
+  const r = await fetch(`${CLOUD.url}/get/ra_${key}`, { headers: { Authorization: 'Bearer ' + CLOUD.tok } });
+  if (!r.ok) throw new Error('HTTP ' + r.status + (r.status === 401 ? ' (jeton Upstash refusé)' : ''));
+  const j = await r.json(); if (j.error) throw new Error(j.error);
+  if (!j.result) return null;
+  return JSON.parse(zlib.gunzipSync(Buffer.from(j.result, 'base64')).toString('utf8'));
 }
 async function cloudPut(key, obj) {
   try {
@@ -48,7 +49,7 @@ async function cloudPut(key, obj) {
   } catch (e) { console.error('nuage (écriture)', e.message); }
 }
 function cloudMark(key, obj) { if (CLOUD) cloudDirty.set(key, obj); }
-async function cloudFlush() { const all = [...cloudDirty]; cloudDirty.clear(); for (const [k, o] of all) await cloudPut(k, o); }
+async function cloudFlush() { if (!cloudReady) return; const all = [...cloudDirty]; cloudDirty.clear(); for (const [k, o] of all) await cloudPut(k, o); }
 if (CLOUD) setInterval(cloudFlush, 30000);
 function toB64(u8) { return Buffer.from(u8).toString('base64'); }
 const LOCAL = false; // true dans la version jouable dans Claude (monde local à un joueur)
@@ -2204,7 +2205,7 @@ function onConnection(ws) {
       for (const q of players.values()) if (q.key === key) return ws.send(JSON.stringify({ t: 'err', m: 'Ce pseudo est déjà en jeu.' }));
       if (key.startsWith('__')) return ws.send(JSON.stringify({ t: 'err', m: 'Ce pseudo est réservé.' }));
       const sv = saves[key];
-      if (sv && sv.acc && sv.acc !== acc) return ws.send(JSON.stringify({ t: 'err', m: 'Ce pseudo appartient déjà à un autre joueur.' }));
+      if (sv && sv.acc && sv.acc !== acc) return ws.send(JSON.stringify({ t: 'err', m: 'Ce pseudo appartient déjà à un autre compte. Si c\'est ton personnage, touche « Retrouver mes personnages » et entre ton code de compte.' }));
       if (!sv && charList(acc).length >= MAX_CHARS) return ws.send(JSON.stringify({ t: 'err', m: `Tu as déjà ${MAX_CHARS} personnages : supprimes-en un pour en créer un autre.` }));
       const cls = sv ? sv.cls : (CLASSES[o.cls] ? o.cls : 'guerrier');
       const loadIt = a => Array.isArray(a) ? cleanItem({ s: a[0], r: a[1], l: a[2], sd: a[3], c: a[4], u: a[5], g: a[6] }) : null;
@@ -2374,6 +2375,7 @@ function onConnection(ws) {
     const tr = trades.get(p.id); if (tr) tradeEnd(tr, 'Échange annulé.');
     partyLeave(p, true); leaveInstance(p);
     saves[p.key] = snapshotSave(p); players.delete(p.id); persist();
+    if (typeof cloudFlush === 'function') cloudFlush();
     for (const m of monsters) if (m.target === p.id) m.target = null;
     broadcast({ t: 'chat', n: '★', m: `${p.name} a quitté le royaume.` });
     console.log(`- ${p.name} (${players.size} en ligne)`);
@@ -2434,10 +2436,15 @@ server.on('upgrade', (req, socket) => {
 });
 (async () => {
   if (CLOUD) {
-    const [sv, sh] = [await cloudGet('saves'), await cloudGet('shared')];
+    let sv = null, sh = null;
+    for (let i = 1; i <= 10; i++) {
+      try { sv = await cloudGet('saves'); sh = await cloudGet('shared'); cloudReady = true; break; }
+      catch (e) { console.error(`nuage (lecture, essai ${i}/10)`, e.message); await new Promise(r => setTimeout(r, 3000)); }
+    }
+    if (!cloudReady) console.error('ATTENTION : sauvegardes du nuage illisibles. Le serveur démarre sans écrire dans le nuage pour ne rien effacer. Vérifie UPSTASH_REDIS_REST_URL et UPSTASH_REDIS_REST_TOKEN sur Render.');
     if (sv) { for (const k of Object.keys(saves)) delete saves[k]; Object.assign(saves, sv); }
     if (sh) { for (const k of Object.keys(kv)) delete kv[k]; Object.assign(kv, sh); }
-    console.log(`Sauvegardes du nuage chargées : ${sv ? Object.keys(sv).length : 0} entrées`);
+    if (cloudReady) console.log(`Sauvegardes du nuage chargées : ${sv ? Object.keys(sv).length : 0} entrées`);
     const bye = async () => { try { persist(); await cloudFlush(); } finally { process.exit(0); } };
     process.on('SIGTERM', bye); process.on('SIGINT', bye);
   }
